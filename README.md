@@ -13,13 +13,19 @@
 - **cc_config** - 配置管理命令
   - `cc_config show` - 显示当前配置
   - `cc_config set <provider>` - 设置供应商 token
-  - `cc_config clear [provider]` - 清除配置
+  - `cc_config clear [provider]` - 清除环境变量
+  - `cc_config delete <provider>` - 删除持久化存储
+  - `cc_config install [shell]` - 安装到 shell 配置文件（持久生效）
+  - `cc_config uninstall` - 从 shell 配置文件卸载
+  - `cc_config status` - 显示安装状态
   - `cc_config help` - 显示帮助
 
 ### 🔐 安全特性
-- Token 安全存储（环境变量）
+- Token 安全存储（环境变量 + 持久化配置文件）
 - 密码输入隐藏（silent read）
 - 配置隔离（不同供应商使用不同变量）
+- 文件权限保护（配置文件 600，目录 700）
+- 自动备份机制（修改前自动备份）
 
 ## 支持的供应商
 
@@ -31,19 +37,24 @@
 
 ## 安装和使用
 
-### 1. 加载脚本
+### 1. 选择安装方式
+
+#### 临时使用（当前会话有效）
 ```bash
 source provider.sh
 ```
 
-### 2. 设置供应商 Token
+#### 永久安装（重启 shell 后仍然有效）
 ```bash
-# 设置 GLM token
-cc_config set glm
+# 自动检测 shell 类型并安装
+cc_config install
 
-# 设置 Kimi token
-cc_config set kimi
+# 或手动指定 shell 类型
+cc_config install bash
+cc_config install zsh
 ```
+
+### 2. 设置供应商 Token
 
 ### 3. 使用服务
 ```bash
@@ -57,13 +68,35 @@ ccglm
 cckimi
 ```
 
-### 4. 查看配置
+### 4. 管理配置
 ```bash
 # 显示当前配置
 cc_config show
 
+# 显示安装状态
+cc_config status
+
+# 删除特定供应商的持久化存储
+cc_config delete glm
+cc_config delete kimi
+
+# 删除所有持久化存储
+cc_config delete all
+```
+
+### 5. 卸载
+```bash
+# 完全卸载（从 shell 配置文件中移除）
+cc_config uninstall
+```
+
+### 6. 查看帮助
+```bash
 # 显示帮助信息
 cc_help
+
+# 显示配置管理帮助
+cc_config help
 ```
 
 ## 工作原理
@@ -75,12 +108,14 @@ cc_help
 
 ### Token 安全
 - Token 通过 `read -s` 安全输入
-- 存储在环境变量中，不会写入文件
+- 存储在环境变量中，同时支持持久化存储
 - 支持 bash 和 zsh shell
 
 ### 配置持久化
-- Token 设置后在当前会话中保持有效
-- 可在 shell 配置文件中永久保存 token 变量
+- **自动持久化**: Token 设置后自动保存到 `~/.cc-provider-switcher/tokens.conf`
+- **会话持久化**: 环境变量在当前 shell 会话中保持有效
+- **安装持久化**: 通过 `cc_config install` 安装到 shell 配置文件，重启后仍然有效
+- **安全存储**: 配置文件权限 600，目录权限 700
 
 ## 使用场景
 
@@ -100,7 +135,8 @@ cc_help
 
 - 仅支持兼容 Anthropic API 格式的供应商
 - 需要预先获取各供应商的 API token
-- Token 仅在当前 shell 会话中有效（除非手动持久化）
+- 需要安装 Claude CLI 工具
+- 支持 Linux/macOS 系统
 
 ## 技术细节
 
@@ -118,12 +154,22 @@ cc_help
 ```
 provider.sh          # 主脚本
 README.md           # 说明文档
+CLAUDE.md           # 开发文档
+```
+
+### 配置文件和目录
+```
+~/.cc-provider-switcher/               # 配置目录（权限 700）
+├── tokens.conf                        # Token 持久化存储（权限 600）
+├── tokens.conf.backup                 # 自动备份文件
+└── .installed                         # 安装标记文件
 ```
 
 ## 示例工作流
 
+### 临时使用工作流
 ```bash
-# 1. 加载脚本
+# 1. 加载脚本（当前会话有效）
 source provider.sh
 
 # 2. 设置所有供应商的 token
@@ -138,24 +184,63 @@ cc          # Claude 官方
 ccglm       # 智谱 GLM
 cckimi      # Kimi
 
-# 5. 清除配置
+# 5. 清除当前会话配置
 cc_config clear
+```
+
+### 永久安装工作流
+```bash
+# 1. 永久安装（重启 shell 后仍然有效）
+cc_config install
+
+# 2. 重新启动 shell 或重新加载配置
+source ~/.bashrc  # 或 source ~/.zshrc
+
+# 3. 设置 token（自动持久化保存）
+cc_config set glm
+cc_config set kimi
+
+# 4. 验证安装状态
+cc_config status
+
+# 5. 使用不同供应商
+cc
+ccglm
+cckimi
+
+# 6. 卸载（如需要）
+cc_config uninstall
 ```
 
 ## 故障排除
 
 ### 常见问题
-1. **命令未找到** - 确保已正确 `source provider.sh`
+1. **命令未找到** - 确保已正确 `source provider.sh` 或运行 `cc_config install`
 2. **Token 无效** - 检查 token 是否正确设置
 3. **API 连接失败** - 检查网络连接和 API 端点
+4. **权限错误** - 检查配置文件权限是否正确
+5. **安装失败** - 检查 shell 配置文件路径和权限
 
 ### 调试
 ```bash
 # 显示当前环境变量
 env | grep ANTHROPIC
 
+# 显示安装状态
+cc_config status
+
+# 查看配置文件内容
+cat ~/.cc-provider-switcher/tokens.conf
+
+# 查看安装记录
+cat ~/.cc-provider-switcher/.installed
+
 # 重新加载脚本
 source provider.sh
+
+# 检查 shell 配置文件
+grep -n "provider.sh" ~/.bashrc
+grep -n "provider.sh" ~/.zshrc
 ```
 
 ## 贡献

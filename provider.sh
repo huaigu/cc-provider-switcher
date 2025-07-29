@@ -7,12 +7,185 @@
 CONFIG_DIR="$HOME/.cc-provider-switcher"
 CONFIG_FILE="$CONFIG_DIR/tokens.conf"
 BACKUP_FILE="$CONFIG_DIR/tokens.conf.backup"
+INSTALL_MARKER="$CONFIG_DIR/.installed"
+
+# Shell 配置文件路径
+BASH_RC="$HOME/.bashrc"
+BASH_PROFILE="$HOME/.bash_profile"
+ZSH_RC="$HOME/.zshrc"
+PROFILE="$HOME/.profile"
 
 # 确保配置目录存在
 ensure_config_dir() {
     if [ ! -d "$CONFIG_DIR" ]; then
         mkdir -p "$CONFIG_DIR"
         chmod 700 "$CONFIG_DIR"  # 设置权限为仅用户可访问
+    fi
+}
+
+# 函数：检测当前shell类型
+detect_shell() {
+    if [ -n "$ZSH_VERSION" ]; then
+        echo "zsh"
+    elif [ -n "$BASH_VERSION" ]; then
+        echo "bash"
+    else
+        # 尝试从父进程检测
+        local parent_shell
+        parent_shell=$(ps -p $PPID -o comm= 2>/dev/null)
+        case "$parent_shell" in
+            *zsh*|*zsh) echo "zsh" ;;
+            *bash*|*bash) echo "bash" ;;
+            *) echo "unknown" ;;
+        esac
+    fi
+}
+
+# 函数：获取shell配置文件路径
+get_shell_config() {
+    local shell_type="$1"
+    case "$shell_type" in
+        "zsh")
+            if [ -f "$ZSH_RC" ]; then
+                echo "$ZSH_RC"
+            elif [ -f "$HOME/.zshenv" ]; then
+                echo "$HOME/.zshenv"
+            else
+                echo "$ZSH_RC"
+            fi
+            ;;
+        "bash")
+            # 按优先级检查配置文件
+            if [ -f "$BASH_RC" ]; then
+                echo "$BASH_RC"
+            elif [ -f "$BASH_PROFILE" ]; then
+                echo "$BASH_PROFILE"
+            elif [ -f "$PROFILE" ]; then
+                echo "$PROFILE"
+            else
+                echo "$BASH_RC"
+            fi
+            ;;
+        *)
+            echo "$BASH_RC"  # 默认使用bashrc
+            ;;
+    esac
+}
+
+# 函数：检查是否已安装
+is_installed() {
+    [ -f "$INSTALL_MARKER" ] && [ -s "$INSTALL_MARKER" ]
+}
+
+# 函数：备份配置文件
+backup_config_file() {
+    local config_file="$1"
+    if [ -f "$config_file" ]; then
+        local backup_file="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$config_file" "$backup_file"
+        echo "$backup_file"
+    fi
+}
+
+# 函数：安装到shell配置文件
+install_to_shell() {
+    local shell_type="$1"
+    local config_file
+    config_file=$(get_shell_config "$shell_type")
+    
+    echo "正在安装到 $config_file..."
+    
+    # 备份现有配置文件
+    local backup_file
+    backup_file=$(backup_config_file "$config_file")
+    if [ -n "$backup_file" ]; then
+        echo "✓ 已备份现有配置到 $backup_file"
+    fi
+    
+    # 获取脚本绝对路径
+    local script_path
+    script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    
+    # 检查是否已经安装
+    if grep -q "source.*$(basename "${BASH_SOURCE[0]}")" "$config_file" 2>/dev/null; then
+        echo "⚠️ 已经安装在此配置文件中"
+        return 1
+    fi
+    
+    # 添加安装标记
+    cat >> "$config_file" << EOF
+
+# Claude Provider Switcher - 安装于 $(date '+%Y-%m-%d %H:%M:%S')
+# 支持: cc, ccglm, cckimi 命令
+source "$script_path"
+EOF
+    
+    # 创建安装标记
+    ensure_config_dir
+    echo "$shell_type|$config_file|$script_path" > "$INSTALL_MARKER"
+    
+    echo "✓ 已安装到 $config_file"
+    echo "✓ 请重新启动shell或运行 'source $config_file' 来加载配置"
+    return 0
+}
+
+# 函数：从shell配置文件卸载
+uninstall_from_shell() {
+    if ! is_installed; then
+        echo "❌ 未找到安装记录"
+        return 1
+    fi
+    
+    # 读取安装记录
+    local install_info
+    install_info=$(cat "$INSTALL_MARKER")
+    local shell_type config_file script_path
+    IFS='|' read -r shell_type config_file script_path <<< "$install_info"
+    
+    echo "正在从 $config_file 卸载..."
+    
+    # 备份配置文件
+    local backup_file
+    backup_file=$(backup_config_file "$config_file")
+    if [ -n "$backup_file" ]; then
+        echo "✓ 已备份现有配置到 $backup_file"
+    fi
+    
+    # 删除安装的内容
+    if [ -f "$config_file" ]; then
+        # 删除Claude Provider Switcher相关的行
+        sed -i '/# Claude Provider Switcher - 安装于/,/source.*provider\.sh/d' "$config_file"
+        
+        # 删除空行（如果有的话）
+        sed -i '/^$/N;/^\n$/D' "$config_file"
+        
+        echo "✓ 已从 $config_file 移除安装内容"
+    fi
+    
+    # 删除安装标记
+    rm -f "$INSTALL_MARKER"
+    
+    echo "✓ 卸载完成"
+    echo "✓ 请重新启动shell或运行 'source $config_file' 来应用更改"
+    return 0
+}
+
+# 函数：显示安装状态
+show_install_status() {
+    if is_installed; then
+        local install_info
+        install_info=$(cat "$INSTALL_MARKER")
+        local shell_type config_file script_path
+        IFS='|' read -r shell_type config_file script_path <<< "$install_info"
+        
+        echo "✅ Claude Provider Switcher 已安装"
+        echo "   Shell类型: $shell_type"
+        echo "   配置文件: $config_file"
+        echo "   脚本路径: $script_path"
+        echo "   安装时间: $(date -r "$INSTALL_MARKER" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$INSTALL_MARKER" 2>/dev/null || echo "未知")"
+    else
+        echo "❌ Claude Provider Switcher 未安装"
+        echo "   使用 'cc_config install' 进行安装"
     fi
 }
 
@@ -384,13 +557,42 @@ function cc_config {
             echo "  cc_config set <provider> - 设置供应商token"
             echo "  cc_config clear [provider] - 清除环境变量"
             echo "  cc_config delete <provider> - 删除持久化存储"
+            echo "  cc_config install [shell]  - 安装到shell配置文件"
+            echo "  cc_config uninstall       - 从shell配置文件卸载"
+            echo "  cc_config status          - 显示安装状态"
             echo "  cc_config help         - 显示帮助"
             echo ""
             echo "支持的供应商: glm kimi"
+            echo "支持的shell: bash zsh"
             echo "使用 'all' 删除所有配置"
             echo ""
             echo "持久化存储位置: $CONFIG_FILE"
             echo "备份文件位置: $BACKUP_FILE"
+            echo "安装标记文件: $INSTALL_MARKER"
+            ;;
+        "install")
+            local current_shell
+            current_shell=$(detect_shell)
+            if [ "$current_shell" = "unknown" ]; then
+                echo "❌ 无法检测当前shell类型"
+                echo "请手动指定shell类型:"
+                echo "  cc_config install bash"
+                echo "  cc_config install zsh"
+                return 1
+            fi
+            
+            if [ -n "$2" ]; then
+                current_shell="$2"
+            fi
+            
+            echo "检测到shell类型: $current_shell"
+            install_to_shell "$current_shell"
+            ;;
+        "uninstall")
+            uninstall_from_shell
+            ;;
+        "status")
+            show_install_status
             ;;
         *)
             echo "错误: 未知参数 '$1'"
@@ -413,6 +615,12 @@ function cc_help {
     echo "  cc_help    - 显示此帮助信息"
     echo ""
     echo "支持的供应商: glm kimi"
+    echo "支持的shell: bash zsh"
+    echo ""
+    echo "安装和卸载:"
+    echo "  cc_config install   - 安装到shell配置文件（持久生效）"
+    echo "  cc_config uninstall - 从shell配置文件卸载"
+    echo "  cc_config status    - 显示安装状态"
     echo ""
     echo "持久化存储:"
     echo "  Tokens 自动保存到 ~/.cc-provider-switcher/tokens.conf"
