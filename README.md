@@ -2,6 +2,23 @@
 
 一个用于在不同 AI 服务供应商之间快速切换的 Bash 脚本，支持 Claude 官方服务、智谱 GLM 和 Kimi 服务。
 
+## 🚀 快速开始
+
+### 一行命令安装
+```bash
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash
+```
+
+### 一行命令卸载
+```bash
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash -s uninstall
+```
+
+安装完成后重新启动 shell，然后就可以使用：
+- `cc` - Claude 官方服务
+- `ccglm` - 智谱 GLM 服务  
+- `cckimi` - Kimi 服务
+
 ## 功能特性
 
 ### 🔄 供应商切换
@@ -39,9 +56,18 @@
 
 ### 1. 选择安装方式
 
-#### 一键安装（推荐）
+#### 在线一键安装（最推荐）
 ```bash
-# 自动检测 shell 类型并安装
+# 直接从 GitHub 仓库安装（无需下载文件）
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash
+
+# 或者使用 wget
+wget -qO- https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash
+```
+
+#### 本地一键安装
+```bash
+# 下载脚本后安装
 ./provider.sh install
 
 # 或手动指定 shell 类型
@@ -112,7 +138,13 @@ cc_config delete all
 
 ### 5. 卸载
 ```bash
-# 一键卸载（推荐）
+# 在线一键卸载（最推荐）
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash -s uninstall
+
+# 或者使用 wget
+wget -qO- https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash -s uninstall
+
+# 本地一键卸载
 ./provider.sh uninstall
 
 # 或传统卸载方式
@@ -217,7 +249,31 @@ cckimi      # Kimi
 cc_config clear
 ```
 
-### 一键安装工作流（推荐）
+### 在线一键安装工作流（最推荐）
+```bash
+# 1. 在线一键安装（自动检测 shell 类型）
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash
+
+# 2. 重新启动 shell 或重新加载配置
+source ~/.bashrc  # 或 source ~/.zshrc
+
+# 3. 设置 token（自动持久化保存）
+cc_config set glm
+cc_config set kimi
+
+# 4. 验证安装状态
+cc_config status
+
+# 5. 使用不同供应商
+cc
+ccglm
+cckimi
+
+# 6. 在线一键卸载（如需要）
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash -s uninstall
+```
+
+### 本地一键安装工作流
 ```bash
 # 1. 一键安装（自动检测 shell 类型）
 ./provider.sh install
@@ -268,12 +324,13 @@ cc_config uninstall
 ## 故障排除
 
 ### 常见问题
-1. **命令未找到** - 确保已正确 `source provider.sh` 或运行 `./provider.sh install`
+1. **命令未找到** - 确保已正确安装，运行在线安装命令：`curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | bash`
 2. **Token 无效** - 检查 token 是否正确设置
 3. **API 连接失败** - 检查网络连接和 API 端点
 4. **权限错误** - 检查配置文件权限是否正确
 5. **安装失败** - 检查 shell 配置文件路径和权限
 6. **脚本执行权限** - 确保 `provider.sh` 有执行权限：`chmod +x provider.sh`
+7. **网络连接问题** - 在线安装时确保能访问 GitHub，检查代理设置
 
 ### 调试
 ```bash
@@ -296,11 +353,17 @@ source provider.sh
 grep -n "provider.sh" ~/.bashrc
 grep -n "provider.sh" ~/.zshrc
 
-# 测试一键安装命令
+# 测试在线安装命令（预览）
+curl -fsSL https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh | head -10
+
+# 测试本地一键安装命令
 ./provider.sh help
 
 # 检查脚本执行权限
 ls -la provider.sh
+
+# 测试网络连接
+curl -I https://raw.githubusercontent.com/huaigu/cc-provider-switcher/refs/heads/main/provider.sh
 ```
 
 ## 贡献
