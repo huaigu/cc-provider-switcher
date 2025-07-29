@@ -505,7 +505,7 @@ set_provider_env() {
 
 # 函数：执行 claude 命令
 run_claude() {
-    claude --dangerously-skip-permissions -c
+    claude --dangerously-skip-permissions
 }
 
 # 函数：显示当前配置
