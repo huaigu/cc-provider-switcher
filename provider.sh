@@ -2,6 +2,114 @@
 
 # AI 供应商配置脚本
 # 支持 bash 和 zsh
+# 使用方式: ./provider.sh [install|uninstall|help]
+
+# 命令行参数处理
+handle_command_line_args() {
+    case "${1:-}" in
+        "install")
+            shift
+            handle_install "$@"
+            exit 0
+            ;;
+        "uninstall")
+            handle_uninstall
+            exit 0
+            ;;
+        "help"|"-h"|"--help")
+            show_main_help
+            exit 0
+            ;;
+        "")
+            # 没有参数，正常加载脚本
+            ;;
+        *)
+            echo "错误: 未知参数 '$1'"
+            echo "使用 './provider.sh help' 查看帮助"
+            exit 1
+            ;;
+    esac
+}
+
+# 处理安装命令
+handle_install() {
+    local shell_type="$1"
+    
+    if [ -z "$shell_type" ]; then
+        local current_shell
+        current_shell=$(detect_shell)
+        if [ "$current_shell" = "unknown" ]; then
+            echo "❌ 无法检测当前shell类型"
+            echo "请手动指定shell类型:"
+            echo "  $0 install bash"
+            echo "  $0 install zsh"
+            exit 1
+        fi
+        shell_type="$current_shell"
+    fi
+    
+    echo "检测到shell类型: $shell_type"
+    
+    # 获取脚本绝对路径
+    local script_path
+    script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    
+    # 检查脚本是否存在
+    if [ ! -f "$script_path" ]; then
+        echo "❌ 脚本文件不存在: $script_path"
+        exit 1
+    fi
+    
+    # 执行安装
+    if install_to_shell "$shell_type"; then
+        echo ""
+        echo "✅ 安装完成！"
+        echo "📝 请重新启动shell或运行 'source $(get_shell_config "$shell_type")' 来加载配置"
+        echo "🔧 之后你可以直接使用: cc, ccglm, cckimi 命令"
+    else
+        echo "❌ 安装失败"
+        exit 1
+    fi
+}
+
+# 处理卸载命令
+handle_uninstall() {
+    if uninstall_from_shell; then
+        echo ""
+        echo "✅ 卸载完成！"
+        echo "📝 请重新启动shell或运行 'source $(get_shell_config "$(cat "$INSTALL_MARKER" | cut -d'|' -f1)")' 来应用更改"
+    else
+        echo "❌ 卸载失败"
+        exit 1
+    fi
+}
+
+# 显示主帮助信息
+show_main_help() {
+    echo "Claude Provider Switcher - 安装脚本"
+    echo ""
+    echo "使用方式:"
+    echo "  $0 install [shell]  - 安装到shell配置文件"
+    echo "  $0 uninstall         - 从shell配置文件卸载"
+    echo "  $0 help             - 显示此帮助信息"
+    echo ""
+    echo "支持的shell: bash zsh"
+    echo ""
+    echo "示例:"
+    echo "  $0 install           - 自动检测并安装到当前shell"
+    echo "  $0 install bash      - 安装到 ~/.bashrc"
+    echo "  $0 install zsh       - 安装到 ~/.zshrc"
+    echo "  $0 uninstall         - 从shell配置文件卸载"
+    echo ""
+    echo "安装后可以直接使用以下命令:"
+    echo "  cc        - 使用 Claude 官方服务"
+    echo "  ccglm     - 使用智谱GLM服务"
+    echo "  cckimi    - 使用Kimi服务"
+    echo "  cc_config - 配置管理"
+    echo "  cc_help   - 显示帮助"
+}
+
+# 处理命令行参数（将在所有函数定义后调用）
 
 # 配置文件路径
 CONFIG_DIR="$HOME/.cc-provider-switcher"
@@ -630,6 +738,12 @@ function cc_help {
 # 加载已保存的tokens
 load_tokens
 
-# 显示加载成功信息
-echo "Claude 供应商切换工具已加载"
-echo "使用 'cc_help' 查看帮助信息"
+# 检查是否为直接执行脚本（而不是source）
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    # 直接执行脚本，处理命令行参数
+    handle_command_line_args "$@"
+else
+    # 被source加载，显示加载成功信息
+    echo "Claude 供应商切换工具已加载"
+    echo "使用 'cc_help' 查看帮助信息"
+fi

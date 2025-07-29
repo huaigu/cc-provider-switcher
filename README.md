@@ -39,12 +39,25 @@
 
 ### 1. 选择安装方式
 
+#### 一键安装（推荐）
+```bash
+# 自动检测 shell 类型并安装
+./provider.sh install
+
+# 或手动指定 shell 类型
+./provider.sh install bash
+./provider.sh install zsh
+
+# 查看安装帮助
+./provider.sh help
+```
+
 #### 临时使用（当前会话有效）
 ```bash
 source provider.sh
 ```
 
-#### 永久安装（重启 shell 后仍然有效）
+#### 传统安装方式
 ```bash
 # 自动检测 shell 类型并安装
 cc_config install
@@ -55,6 +68,19 @@ cc_config install zsh
 ```
 
 ### 2. 设置供应商 Token
+
+安装完成后，设置各供应商的 API token：
+
+```bash
+# 设置 GLM token
+cc_config set glm
+
+# 设置 Kimi token  
+cc_config set kimi
+
+# 查看当前配置
+cc_config show
+```
 
 ### 3. 使用服务
 ```bash
@@ -86,7 +112,10 @@ cc_config delete all
 
 ### 5. 卸载
 ```bash
-# 完全卸载（从 shell 配置文件中移除）
+# 一键卸载（推荐）
+./provider.sh uninstall
+
+# 或传统卸载方式
 cc_config uninstall
 ```
 
@@ -188,7 +217,31 @@ cckimi      # Kimi
 cc_config clear
 ```
 
-### 永久安装工作流
+### 一键安装工作流（推荐）
+```bash
+# 1. 一键安装（自动检测 shell 类型）
+./provider.sh install
+
+# 2. 重新启动 shell 或重新加载配置
+source ~/.bashrc  # 或 source ~/.zshrc
+
+# 3. 设置 token（自动持久化保存）
+cc_config set glm
+cc_config set kimi
+
+# 4. 验证安装状态
+cc_config status
+
+# 5. 使用不同供应商
+cc
+ccglm
+cckimi
+
+# 6. 一键卸载（如需要）
+./provider.sh uninstall
+```
+
+### 永久安装工作流（传统方式）
 ```bash
 # 1. 永久安装（重启 shell 后仍然有效）
 cc_config install
@@ -215,11 +268,12 @@ cc_config uninstall
 ## 故障排除
 
 ### 常见问题
-1. **命令未找到** - 确保已正确 `source provider.sh` 或运行 `cc_config install`
+1. **命令未找到** - 确保已正确 `source provider.sh` 或运行 `./provider.sh install`
 2. **Token 无效** - 检查 token 是否正确设置
 3. **API 连接失败** - 检查网络连接和 API 端点
 4. **权限错误** - 检查配置文件权限是否正确
 5. **安装失败** - 检查 shell 配置文件路径和权限
+6. **脚本执行权限** - 确保 `provider.sh` 有执行权限：`chmod +x provider.sh`
 
 ### 调试
 ```bash
@@ -241,6 +295,12 @@ source provider.sh
 # 检查 shell 配置文件
 grep -n "provider.sh" ~/.bashrc
 grep -n "provider.sh" ~/.zshrc
+
+# 测试一键安装命令
+./provider.sh help
+
+# 检查脚本执行权限
+ls -la provider.sh
 ```
 
 ## 贡献
