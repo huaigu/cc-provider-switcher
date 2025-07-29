@@ -3,6 +3,19 @@
 # AI 供应商配置脚本
 # 支持 bash 和 zsh
 
+# 配置文件路径
+CONFIG_DIR="$HOME/.cc-provider-switcher"
+CONFIG_FILE="$CONFIG_DIR/tokens.conf"
+BACKUP_FILE="$CONFIG_DIR/tokens.conf.backup"
+
+# 确保配置目录存在
+ensure_config_dir() {
+    if [ ! -d "$CONFIG_DIR" ]; then
+        mkdir -p "$CONFIG_DIR"
+        chmod 700 "$CONFIG_DIR"  # 设置权限为仅用户可访问
+    fi
+}
+
 # 供应商配置
 PROVIDER_GLM="https://open.bigmodel.cn/api/anthropic"
 PROVIDER_KIMI="https://api.moonshot.cn/v1"
@@ -26,6 +39,122 @@ get_token_var() {
     esac
 }
 
+# 函数：保存token到配置文件
+save_token() {
+    local provider="$1"
+    local token="$2"
+    
+    # 验证参数
+    if [ -z "$provider" ] || [ -z "$token" ]; then
+        echo "错误: provider 和 token 不能为空"
+        return 1
+    fi
+    
+    ensure_config_dir
+    
+    # 如果配置文件不存在，创建新文件
+    if [ ! -f "$CONFIG_FILE" ]; then
+        touch "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"  # 设置权限为仅用户可读写
+        echo "# Claude Provider Switcher Token Configuration" > "$CONFIG_FILE"
+        echo "# 创建时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$CONFIG_FILE"
+        echo "" >> "$CONFIG_FILE"
+    fi
+    
+    # 备份现有配置文件
+    if [ -f "$CONFIG_FILE" ]; then
+        cp "$CONFIG_FILE" "$BACKUP_FILE"
+    fi
+    
+    # 删除旧的token配置（如果存在）
+    sed -i.bak "/^${provider}_token=/d" "$CONFIG_FILE"
+    
+    # 添加新的token配置
+    echo "${provider}_token=${token}" >> "$CONFIG_FILE"
+    
+    echo "✓ $provider token 已持久化保存到配置文件"
+    return 0
+}
+
+# 函数：从配置文件加载token
+load_tokens() {
+    if [ -f "$CONFIG_FILE" ]; then
+        local loaded_count=0
+        while IFS='=' read -r key value; do
+            # 跳过注释行和空行
+            case "$key" in
+                ""|"#"*)
+                    continue
+                    ;;
+                "glm_token")
+                    export ANTHROPIC_AUTH_TOKEN_GLM="$value"
+                    loaded_count=$((loaded_count + 1))
+                    ;;
+                "kimi_token")
+                    export ANTHROPIC_AUTH_TOKEN_KIMI="$value"
+                    loaded_count=$((loaded_count + 1))
+                    ;;
+            esac
+        done < "$CONFIG_FILE"
+        
+        if [ $loaded_count -gt 0 ]; then
+            echo "✓ 已从持久化存储加载 $loaded_count 个供应商 token"
+        fi
+    fi
+}
+
+# 函数：删除配置文件中的token
+delete_token() {
+    local provider="$1"
+    
+    # 验证参数
+    if [ -z "$provider" ]; then
+        echo "错误: provider 不能为空"
+        return 1
+    fi
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "配置文件不存在"
+        return 1
+    fi
+    
+    if grep -q "^${provider}_token=" "$CONFIG_FILE"; then
+        # 备份配置文件
+        cp "$CONFIG_FILE" "$BACKUP_FILE"
+        # 删除token
+        sed -i.bak "/^${provider}_token=/d" "$CONFIG_FILE"
+        echo "✓ $provider token 已从持久化存储中删除"
+        
+        # 如果配置文件为空（除了注释），则删除文件
+        local line_count
+        line_count=$(grep -v "^#" "$CONFIG_FILE" | grep -v "^$" | wc -l | tr -d ' ')
+        if [ "$line_count" -eq 0 ]; then
+            rm "$CONFIG_FILE"
+            echo "✓ 配置文件已删除（无有效配置）"
+        fi
+        
+        return 0
+    else
+        echo "配置文件中未找到 $provider token"
+        return 1
+    fi
+}
+
+# 函数：删除整个配置文件
+delete_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        # 备份配置文件
+        cp "$CONFIG_FILE" "$BACKUP_FILE"
+        # 删除配置文件
+        rm "$CONFIG_FILE"
+        echo "✓ 配置文件已删除，备份保存到 $BACKUP_FILE"
+        return 0
+    else
+        echo "配置文件不存在"
+        return 1
+    fi
+}
+
 # 函数：获取或设置 token
 get_or_set_token() {
     local provider="$1"
@@ -46,13 +175,17 @@ get_or_set_token() {
         read -s token
         if [ -n "$token" ]; then
             export "$token_var"="$token"
-            echo "$provider token 已设置"
+            echo "✓ $provider token 已设置（当前会话）"
+            # 自动保存到持久化存储
+            if save_token "$provider" "$token"; then
+                echo "✓ token 已自动持久化保存"
+            fi
         else
             echo "错误: token 不能为空"
             return 1
         fi
     else
-        echo "使用已存在的 $provider token"
+        echo "✓ 使用已存在的 $provider token"
     fi
 }
 
@@ -135,7 +268,12 @@ set_token() {
         local token_var
         token_var=$(get_token_var "$provider")
         export "$token_var"="$token"
-        echo "$provider token 已设置"
+        # 保存到配置文件
+        if save_token "$provider" "$token"; then
+            echo "✓ $provider token 已设置并持久化保存"
+        else
+            echo "⚠️ $provider token 已设置但保存失败"
+        fi
     else
         echo "错误: token 不能为空"
         return 1
@@ -205,14 +343,54 @@ function cc_config {
                 echo "所有配置已清除"
             fi
             ;;
+        "delete")
+            if [ -n "$2" ]; then
+                case "$2" in
+                    "glm")
+                        if delete_token "glm"; then
+                            unset ANTHROPIC_AUTH_TOKEN_GLM
+                            echo "✓ GLM token 已完全删除"
+                        fi
+                        ;;
+                    "kimi")
+                        if delete_token "kimi"; then
+                            unset ANTHROPIC_AUTH_TOKEN_KIMI
+                            echo "✓ Kimi token 已完全删除"
+                        fi
+                        ;;
+                    "all")
+                        if delete_config; then
+                            clear_anthropic_env
+                            unset ANTHROPIC_AUTH_TOKEN_GLM
+                            unset ANTHROPIC_AUTH_TOKEN_KIMI
+                            echo "✓ 所有配置已完全删除"
+                        fi
+                        ;;
+                    *)
+                        echo "错误: 不支持的供应商 '$2'"
+                        echo "支持的供应商: glm kimi"
+                        echo "使用 'all' 删除所有配置"
+                        ;;
+                esac
+            else
+                echo "用法: cc_config delete <provider>"
+                echo "支持的供应商: glm kimi"
+                echo "使用 'all' 删除所有配置"
+            fi
+            ;;
         "help")
             echo "cc_config 命令用法:"
             echo "  cc_config show         - 显示当前配置"
             echo "  cc_config set <provider> - 设置供应商token"
-            echo "  cc_config clear [provider] - 清除配置"
+            echo "  cc_config clear [provider] - 清除环境变量"
+            echo "  cc_config delete <provider> - 删除持久化存储"
             echo "  cc_config help         - 显示帮助"
             echo ""
             echo "支持的供应商: glm kimi"
+            echo "使用 'all' 删除所有配置"
+            echo ""
+            echo "持久化存储位置: $CONFIG_FILE"
+            echo "备份文件位置: $BACKUP_FILE"
             ;;
         *)
             echo "错误: 未知参数 '$1'"
@@ -235,7 +413,14 @@ function cc_help {
     echo "  cc_help    - 显示此帮助信息"
     echo ""
     echo "支持的供应商: glm kimi"
+    echo ""
+    echo "持久化存储:"
+    echo "  Tokens 自动保存到 ~/.cc-provider-switcher/tokens.conf"
+    echo "  使用 cc_config delete 删除持久化存储"
 }
+
+# 加载已保存的tokens
+load_tokens
 
 # 显示加载成功信息
 echo "Claude 供应商切换工具已加载"
